@@ -219,9 +219,13 @@ body.techno .bubble,body.techno #inp{font-family:'Fira Code',monospace;font-size
 </div>
 
 <script>
-const TEXT_BASE = 'https://text.pollinations.ai';
+// Pollinations a migré vers gen.pollinations.ai. Sa doc actuelle dit que toutes les
+// requêtes de génération demandent une clé — mais un tier "Anonymous" limité (via un
+// simple paramètre referrer, pas une vraie clé secrète) existait. On tente ça en premier.
+// Endpoints legacy Pollinations : confirmés fonctionnels SANS clé API (voir CodePen de test).
+// Le point bloquant précédent était le paramètre model=gemini (modèle inexistant -> 404).
+const GEMINI_BASE = 'https://text.pollinations.ai';
 const IMG_BASE = 'https://image.pollinations.ai/prompt';
-const TEXT_MODEL = 'openai'; // modèle accessible sans compte (le modèle "gemini" exige un compte "Seed" -> 404 en anonyme)
 
 const THEMES = {
   orionis: {
@@ -390,18 +394,15 @@ function addThinking() {
   return wrap;
 }
 
-// POLLINATIONS CALL
-async function callPollinationsText(history, system) {
-  const conv = history.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n');
-  const url = new URL(`${TEXT_BASE}/${encodeURIComponent(conv)}`);
-  url.searchParams.set('model', TEXT_MODEL);
-  if (system) url.searchParams.set('system', system);
+// POLLINATIONS CALL (tentative sans clé, via le paramètre referrer du tier Anonymous)
+async function callGemini(messages) {
+  const lastUserMsg = messages[messages.length - 1].content;
+  const url = new URL(`${GEMINI_BASE}/${encodeURIComponent(lastUserMsg)}`);
+  url.searchParams.set('system', THEMES[currentTheme].system);
   url.searchParams.set('seed', Math.floor(Math.random() * 1000000));
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`API Error: ${res.status}`);
-  const text = await res.text();
-  if (!text.trim()) throw new Error('Réponse vide');
-  return text;
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error('API Error: ' + res.status);
+  return await res.text();
 }
 
 function getImageUrl(prompt) {
@@ -411,6 +412,18 @@ function getImageUrl(prompt) {
   url.searchParams.set('seed', Math.floor(Math.random() * 1000000));
   url.searchParams.set('nologo', 'true');
   return url.toString();
+}
+
+// SMOOTH TYPEOUT
+async function typeOut(el, text) {
+  el.innerHTML = '';
+  const words = text.split(/(\s+)/);
+  for (let i = 0; i < words.length; i++) {
+    el.innerHTML += fmt(words[i]);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    await new Promise(r => setTimeout(r, 20 + Math.random() * 20));
+  }
+  el.innerHTML = fmt(text);
 }
 
 // SEND
@@ -444,7 +457,10 @@ async function handleSend() {
   } else {
     try {
       hist.push({ role: 'user', content: txt });
-      const fullText = await callPollinationsText(hist, THEMES[currentTheme].system);
+      const fullText = await callGemini([
+        { role: 'system', content: THEMES[currentTheme].system },
+        ...hist
+      ]);
       hist.push({ role: 'assistant', content: fullText });
       thinkMsg.remove();
       addMsg('ai', fullText);
