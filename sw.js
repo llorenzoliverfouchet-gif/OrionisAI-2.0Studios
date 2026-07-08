@@ -1,5 +1,13 @@
-const CACHE = 'orionis-ai-v2';
-const ASSETS = ['./', './index.html', './manifest.json'];
+const CACHE = 'orionis-ai-v3';
+const ASSETS = [
+  './',
+  './index.html',
+  './manifest.json',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
+  './icons/apple-touch-icon.png'
+];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
@@ -20,6 +28,11 @@ self.addEventListener('activate', (e) => {
 // secours hors-ligne. Les autres assets restent cache-first pour la vitesse.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // Les appels vers Pollinations (chat/image) et Google Fonts sont laissés au
+  // réseau natif : les mettre en cache n'apporterait rien (seed aléatoire à
+  // chaque requête) et ça évite tout risque d'interférence avec le CORS.
+  if (new URL(e.request.url).origin !== self.location.origin) return;
+
   const isShell = e.request.mode === 'navigate' || e.request.url.endsWith('manifest.json');
 
   if (isShell) {
