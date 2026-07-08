@@ -570,7 +570,10 @@ inp.addEventListener('keydown', (e) => {
 });
 
 // PWA : installation / raccourci navigateur
-if ('serviceWorker' in navigator) {
+// Le service worker exige un contexte sécurisé (https:// ou localhost) :
+// ouvert en double-clic depuis le disque (file://), il ne s'enregistre jamais
+// et beforeinstallprompt ne se déclenchera jamais — c'est attendu, pas un bug.
+if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   });
@@ -580,16 +583,17 @@ const installBtn = document.getElementById('install-btn');
 let deferredInstallPrompt = null;
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isFileProtocol = location.protocol === 'file:';
+
+// On affiche toujours le bouton (sauf si déjà installé) : même quand le
+// navigateur ne propose pas de prompt natif, on donne des instructions claires
+// au clic plutôt que de laisser un bouton qui ne fait rien.
+if (!isStandalone) installBtn.classList.add('show');
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
-  if (!isStandalone) installBtn.classList.add('show');
 });
-
-if (isIOS && !isStandalone) {
-  installBtn.classList.add('show');
-}
 
 installBtn.addEventListener('click', async () => {
   if (deferredInstallPrompt) {
@@ -597,8 +601,18 @@ installBtn.addEventListener('click', async () => {
     await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;
     installBtn.classList.remove('show');
+    return;
+  }
+  if (isFileProtocol) {
+    addMsg('ai', "⚠️ Cette page est ouverte en local (`file://`). L'installation en app / raccourci nécessite qu'elle soit servie via **http(s)://** (ex. GitHub Pages, ou `python -m http.server`) — les navigateurs bloquent l'installation depuis un fichier local.");
   } else if (isIOS) {
     addMsg('ai', "Pour installer Orionis AI sur iPhone/iPad : appuyez sur le bouton **Partager** de Safari, puis **Sur l'écran d'accueil**.");
+  } else if (/^((?!chrome|chromium|edg).)*safari/i.test(navigator.userAgent)) {
+    addMsg('ai', "Safari sur Mac ne propose pas d'installation en un clic. Utilisez plutôt **Fichier → Ajouter au Dock**, ou ouvrez ce site avec Chrome/Edge pour installer l'app.");
+  } else if (/firefox/i.test(navigator.userAgent)) {
+    addMsg('ai', "Firefox ne propose pas d'installation en un clic sur ordinateur. Créez un raccourci depuis le menu du navigateur, ou ouvrez ce site avec Chrome/Edge pour une installation native.");
+  } else {
+    addMsg('ai', "Votre navigateur n'a pas encore proposé l'installation. Rechargez la page après quelques secondes de navigation, ou cherchez l'option **Installer l'application** dans le menu du navigateur (souvent une icône ⊕ dans la barre d'adresse).");
   }
 });
 
